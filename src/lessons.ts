@@ -258,6 +258,93 @@ export const LESSONS: Lesson[] = [
   },
 
   {
+    id: 'kong',
+    title: 'The Kong',
+    subtitle: 'A fourth tile, and a free draw',
+    emoji: '🀫',
+    steps: [
+      {
+        title: 'Three ways to kong',
+        body: `A <b>kong</b> (槓 <i class="jyut">gong3</i>) is a set of <b>four</b> identical tiles instead of three. It still only occupies one of your four "set" slots — the fourth tile is a bonus, not an extra requirement. There are three ways to make one:
+        <ul>
+          <li><b>暗槓 <i class="jyut">am3 gong3</i> Concealed Kong</b> — you draw the fourth copy yourself, all four stay hidden.</li>
+          <li><b>明槓 <i class="jyut">ming4 gong3</i> Claimed Kong</b> — you hold three and claim someone's discard for the fourth, exactly like a pung. Goes face-up.</li>
+          <li><b>加槓 <i class="jyut">gaa1 gong3</i> Added Kong</b> — you already have an exposed pung on the table, and later draw the fourth tile yourself. You add it to the existing pung.</li>
+        </ul>
+        Below is a claimed kong of 3 Bamboo, face-up like a pung but with four tiles.`,
+        layout: {
+          hand: ['d5', 'd6', 'c7', 'c8', 'c9', 'we', 'we', 'dr', 'dr'],
+          melds: [['b3', 'b3', 'b3', 'b3']],
+        },
+      },
+      {
+        title: 'Kong pays you back',
+        body: `Declaring a kong costs nothing and gives you two things:
+        <ul>
+          <li>A replacement tile, drawn immediately from the back of the wall — the "dead wall" that funds kong replacements. Your hand goes straight back to 14 tiles.</li>
+          <li>If that replacement tile happens to complete your hand, it scores an extra faan: <b>槓上開花 <i class="jyut">gong3 soeng6 hoi1 faa1</i> Kong Replacement Win</b>.</li>
+        </ul>
+        <p>The risk: a kong exposes information (or, for a concealed kong, at least reveals that you own four of something), and if <i>your</i> discard right after the replacement draw feeds someone else's win, it costs you extra — <b>槓上炮 <i class="jyut">gong3 soeng6 paau3</i></b>, scored the same way in reverse.</p>`,
+        layout: {
+          hand: ['d5', 'd6', 'c7', 'c8', 'c9', 'we', 'we', 'dr'],
+          melds: [['b3', 'b3', 'b3', 'b3']],
+          discards: ['b9', 'wn'],
+        },
+      },
+      {
+        title: 'Robbing the kong',
+        body: `One sharp edge case: if a player upgrades an exposed pung to a kong with <b>加槓</b>, and that exact tile would complete <i>your</i> hand, you may steal it and win — <b>搶槓 <i class="jyut">coeng2 gong3</i> Robbing the Kong</b>.
+        <p>This only works on an <b>added</b> kong. A concealed kong was never visible as a pung in the first place, so there is nothing to rob.</p>`,
+        task: {
+          kind: 'quiz',
+          prompt: 'Someone declares 加槓 gaa1 gong3, upgrading their exposed pung of 東 to a kong. That is the tile you were waiting on. What happens?',
+          options: [
+            { label: 'You may claim it and win — 搶槓', correct: true, why: 'Correct. The instant before it becomes a kong, that tile is fair game for anyone waiting on it.' },
+            { label: 'Nothing — a kong cannot be claimed', correct: false, why: 'True for the four tiles that make up the kong itself, but the split-second act of adding the tile can still be robbed.' },
+            { label: 'Only the player to their left may claim it', correct: false, why: 'Robbing the kong follows normal winning priority, not the seating restriction that applies to chow.' },
+          ],
+        },
+      },
+    ],
+  },
+
+  {
+    id: 'dealer',
+    title: 'Dealer & Round Wind',
+    subtitle: 'Where 圈風 actually comes from',
+    emoji: '🀈',
+    steps: [
+      {
+        title: "The dealer's seat",
+        body: `Each hand has a <b>dealer</b> (莊家 <i class="jyut">zong1 gaa1</i>) — the player seated at East for that hand. The dealer draws first, and everyone's faan payments to and from the dealer are <b>doubled</b>.
+        <p>Win as dealer, or the hand ends in a draw with the dealer ready, and you <b>stay dealer</b> for another hand — this is called 連莊 <i class="jyut">lin4 zong1</i>. Lose as dealer, and the seat passes to the next player.</p>`,
+        layout: { hand: ['we', 'ws', 'ww', 'wn'] },
+        marks: { 0: GOLD },
+      },
+      {
+        title: 'Seat wind vs. round wind',
+        body: `Every player has a <b>seat wind</b> — East, South, West or North, assigned at the table and rotating each time the dealer changes. A triplet of your own seat wind scores <b>門風 <i class="jyut">mun4 fung1</i></b>.
+        <p>The whole table also shares a <b>round wind</b> (圈風 <i class="jyut">hyun1 fung1</i>). A game starts in the <b>East round</b> — round wind East — and only advances to the South round once East has sat at every seat, which takes at least four hands. A triplet of the round wind scores <b>圈風</b>, separately from seat wind.</p>`,
+        layout: { hand: ['we', 'we', 'we', 'ws', 'ws', 'ws'] },
+        marks: { 0: GOLD, 1: GOLD, 2: GOLD, 3: CYAN, 4: CYAN, 5: CYAN },
+      },
+      {
+        title: 'Double East',
+        body: `The dealer's own seat wind is always East, and in the East round the round wind is <i>also</i> East. So a dealer's triplet of 東 scores both faan at once.`,
+        task: {
+          kind: 'quiz',
+          prompt: "You are the dealer in the East round, and your hand has a triplet of 東 dung1. How much does it score?",
+          options: [
+            { label: '2 faan — seat wind and round wind both apply', correct: true, why: 'Correct. 門風 and 圈風 are separate faan and both check the same tile here — the dealer in the East round is doubly rewarded for it, on top of scoring double as dealer.' },
+            { label: '1 faan — the two bonuses merge', correct: false, why: 'They do not merge. Seat wind and round wind are independent checks that both happen to be satisfied.' },
+            { label: '0 — you cannot score your own dealer wind', correct: false, why: 'The opposite is true: being dealer is exactly what makes this triplet worth double.' },
+          ],
+        },
+      },
+    ],
+  },
+
+  {
     id: 'ready',
     title: 'Getting Ready',
     subtitle: 'One tile from a win',
@@ -364,6 +451,28 @@ export const LESSONS: Lesson[] = [
         <p>The table below is Thirteen Orphans, waiting on any one of its thirteen tiles.</p>`,
         layout: { hand: ['c1', 'c9', 'd1', 'd9', 'b1', 'b9', 'we', 'ws', 'ww', 'wn', 'dr', 'dg', 'dw'] },
         marks: Object.fromEntries(Array.from({ length: 13 }, (_, i) => [i, ROSE])),
+      },
+      {
+        title: 'Being in the right place at the right time',
+        body: `A handful of faan don't come from your tiles at all — they come from <b>when</b> you win. Small (1 faan each), situational, and worth recognising when they happen to you:
+        <ul>
+          <li><b>海底撈月 <i class="jyut">hoi2 dai2 laau1 jyut6</i></b> — you self-draw the very last tile left in the wall.</li>
+          <li><b>河底撈魚 <i class="jyut">ho4 dai2 laau1 jyu4</i></b> — you claim the very last discard of the hand.</li>
+          <li><b>槓上開花 <i class="jyut">gong3 soeng6 hoi1 faa1</i></b> — your kong's replacement tile completes your hand.</li>
+          <li><b>槓上炮 <i class="jyut">gong3 soeng6 paau3</i></b> — you claim a discard thrown right after someone's kong.</li>
+          <li><b>搶槓 <i class="jyut">coeng2 gong3</i></b> — you steal someone's added-kong tile to complete your own hand.</li>
+        </ul>
+        <p>None of these appear anywhere else in mahjong writing you'll find online for other rule sets — they're worth learning by name so a table doesn't have to explain them to you mid-game.</p>`,
+        layout: { hand: ['d2', 'd3', 'd4', 'b6', 'b7', 'b8', 'c3', 'c4', 'c5', 'we', 'we', 'we', 'dr', 'dr'] },
+        task: {
+          kind: 'quiz',
+          prompt: 'You declare a concealed kong, draw your replacement tile from the wall, and it completes your hand. What do you score for the moment itself?',
+          options: [
+            { label: '槓上開花 — 1 faan', correct: true, why: 'Correct. Any win off a kong replacement tile scores 槓上開花, on top of whatever your finished hand is worth.' },
+            { label: '搶槓 — 1 faan', correct: false, why: 'Robbing the kong is the opposite situation — winning off someone else adding to their own kong, not off your own replacement draw.' },
+            { label: 'Nothing extra — a kong replacement is just a normal draw', correct: false, why: 'It is treated as a distinct, rarer moment and scores its own faan.' },
+          ],
+        },
       },
     ],
   },

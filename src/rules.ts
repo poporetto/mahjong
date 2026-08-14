@@ -49,6 +49,11 @@ export const HOUSE_RULES = {
     { id: 'allterminals', cn: '清老頭', jyut: 'cing1 lou5 tau4', en: 'All Terminals', faan: 10, note: 'Only 1s and 9s.' },
     { id: 'thirteen', cn: '十三么', jyut: 'sap6 saam1 jiu1', en: 'Thirteen Orphans', faan: 13, note: 'One of each terminal and honour, plus a duplicate.' },
     { id: 'bigwinds', cn: '大四喜', jyut: 'daai6 sei3 hei2', en: 'Great Four Winds', faan: 13, note: 'Triplets of all four winds.' },
+    { id: 'lastdraw', cn: '海底撈月', jyut: 'hoi2 dai2 laau1 jyut6', en: 'Last-Tile Self-Draw', faan: 1, note: 'You drew the very last tile in the wall and it won you the hand.' },
+    { id: 'lastdiscard', cn: '河底撈魚', jyut: 'ho4 dai2 laau1 jyu4', en: 'Last Discard', faan: 1, note: 'You won by claiming the last discard of the hand, with the wall exhausted.' },
+    { id: 'kongdraw', cn: '槓上開花', jyut: 'gong3 soeng6 hoi1 faa1', en: 'Kong Replacement Win', faan: 1, note: 'The tile you drew to replace a kong completed your hand.' },
+    { id: 'kongdiscard', cn: '槓上炮', jyut: 'gong3 soeng6 paau3', en: 'Discard After a Kong', faan: 1, note: 'You won by claiming the discard someone threw right after declaring a kong.' },
+    { id: 'robkong', cn: '搶槓', jyut: 'coeng2 gong3', en: 'Robbing the Kong', faan: 1, note: "You completed your hand by claiming the tile someone added to upgrade a pung into a kong." },
   ] as FaanRule[],
 } as const;
 
@@ -88,13 +93,32 @@ function up(id: string, step: number): string | null {
 
 /* ---------------------------------------------------------- decomposition -- */
 
-export type SetKind = 'pung' | 'chow' | 'pair';
+export type SetKind = 'pung' | 'chow' | 'pair' | 'kong';
+
+export type KongStyle =
+  /** 暗槓 — declared from a concealed hand, never touched by a claim. */
+  | 'concealed'
+  /** 明槓 — completed by claiming someone else's discard. */
+  | 'claimed'
+  /** 加槓 — an existing exposed pung upgraded with a self-drawn 4th tile. */
+  | 'added';
 
 export interface TileSet {
   kind: SetKind;
   tiles: string[];
   /** True when the set was formed by claiming a discard. */
   exposed?: boolean;
+  /** Kong sets only: how the fourth tile was acquired. */
+  kongStyle?: KongStyle;
+}
+
+/**
+ * A kong still counts as one of the four "sets" in a hand — the fourth tile is
+ * extra, replaced by an immediate draw from the dead wall — so scoring code
+ * treats 'kong' exactly like 'pung' everywhere except tile count.
+ */
+function isTripletLike(kind: SetKind): boolean {
+  return kind === 'pung' || kind === 'kong';
 }
 
 /**
@@ -247,6 +271,16 @@ export interface ScoreContext {
   /** 'e' | 's' | 'w' | 'n' */
   seatWind?: 'e' | 's' | 'w' | 'n';
   roundWind?: 'e' | 's' | 'w' | 'n';
+  /** 海底撈月 — this self-draw was the last tile in the live wall. */
+  isLastTile?: boolean;
+  /** 河底撈魚 — this claimed discard was the last tile of the hand. */
+  isLastDiscard?: boolean;
+  /** 槓上開花 — this self-draw was a kong's replacement tile. */
+  isKongReplacement?: boolean;
+  /** 槓上炮 — this claimed discard was thrown right after a kong. */
+  isAfterKong?: boolean;
+  /** 搶槓 — this claimed tile was someone's added-kong tile, not a discard. */
+  isRobbedKong?: boolean;
 }
 
 export interface ScoreResult {
@@ -307,6 +341,14 @@ export function score(ctx: ScoreContext): ScoreResult {
   if (ctx.selfDraw) add('selfdraw');
   if (melds.every((m) => !m.exposed)) add('concealed');
 
+  // Situational faan — mutually exclusive by construction (each depends on a
+  // different moment in the turn), so no suppression logic is needed.
+  if (ctx.isLastTile) add('lastdraw');
+  if (ctx.isLastDiscard) add('lastdiscard');
+  if (ctx.isKongReplacement) add('kongdraw');
+  if (ctx.isAfterKong) add('kongdiscard');
+  if (ctx.isRobbedKong) add('robkong');
+
   const myFlower = ctx.seatWind ? ['e', 's', 'w', 'n'].indexOf(ctx.seatWind) : -1;
   if (myFlower >= 0 && ctx.flowers) {
     const mine = ctx.flowers.filter(
@@ -348,7 +390,7 @@ function scoreSplit(split: TileSet[], ctx: ScoreContext) {
     if (count > 0) hits.push({ rule: RULE_BY_ID[id], count });
   };
 
-  const pungs = split.filter((s) => s.kind === 'pung');
+  const pungs = split.filter((s) => isTripletLike(s.kind));
   const chows = split.filter((s) => s.kind === 'chow');
   const pair = split.find((s) => s.kind === 'pair');
 

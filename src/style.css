@@ -222,6 +222,9 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
   border-radius: var(--radius);
 }
 .coach.win { border: 1px solid var(--gold); }
+.coach.kong-offer { border: 1px solid rgba(245, 197, 66, 0.4); padding-bottom: 12px; }
+.coach.kong-offer p { margin: 0 0 10px; font-size: 13.5px; }
+.coach.kong-offer .primary { width: 100%; }
 .good-text { color: var(--good); }
 .bad-text { color: var(--bad); }
 

@@ -26,14 +26,24 @@ You can't advance past a task until you get it right.
 2. **Honours & Flowers** — winds, dragons, and the bonus tiles
 3. **The Winning Shape** — four sets and a pair; runs vs. triplets
 4. **Taking a Turn** — draw and discard, and the pung / kong / chow claims
-5. **Getting Ready** — reading your own wait, and why two-sided waits beat closed ones
-6. **Faan & Scoring** — the 3-faan minimum, and the patterns that clear it
+5. **The Kong** — the three kong types, the replacement draw, and robbing the kong
+6. **Dealer & Round Wind** — 莊家, why seat wind and round wind are separate, "double East"
+7. **Getting Ready** — reading your own wait, and why two-sided waits beat closed ones
+8. **Faan & Scoring** — the 3-faan minimum, the patterns that clear it, and the five situational faan (kong replacement, last tile, etc.)
 
-**Practice table** — a real deal from a shuffled 144-tile wall. Draw, discard, and watch
-your shanten count, your live wait, and a per-tile readout of what discarding would cost
-you. Flowers are set aside and replaced automatically. Complete a hand and it gets scored
-against the faan table — including telling you when you've built a hand you aren't
+**Practice table** — a real deal from a shuffled 144-tile wall, seated as dealer in the
+East round. Draw, discard, and watch your shanten count, your live wait, and a per-tile
+readout of what discarding would cost you. Flowers are set aside and replaced
+automatically. When you hold three of a tile and draw the fourth, a **Kong** button
+appears — declaring it draws a genuine replacement tile and, if that tile wins the hand,
+scores 槓上開花 correctly. Complete a hand and it gets scored against the faan table,
+including the situational patterns and telling you when you've built a hand you aren't
 allowed to declare.
+
+Solo practice only exercises what one player can trigger alone: concealed kong, added
+kong, and the last-tile-in-the-wall self-draw. Claimed kong, robbing a kong, and winning
+off someone else's discard are taught in the lessons but need an opponent to happen —
+there's no bot player yet.
 
 ## Reading the tiles without hanzi
 

@@ -9,6 +9,7 @@ import { LESSONS } from './lessons';
 import type { Lesson, Step, Task } from './lessons';
 import { faceDataUrl } from './textures';
 import { buildDeck, def, shuffle, sortHand } from './tiles';
+import type { TileSet } from './rules';
 import {
   HOUSE_RULES,
   isWinningHand,
@@ -116,7 +117,7 @@ function renderMenu() {
   table.clearMarks();
 
   content.innerHTML = `
-    <p class="lede">Six short lessons and a practice table. Everything is clickable — you learn by touching the tiles, not by reading about them.</p>
+    <p class="lede">${LESSONS.length} short lessons and a practice table. Everything is clickable — you learn by touching the tiles, not by reading about them.</p>
     <p class="fine">Every tile is labelled with its Cantonese pronunciation, and so is every Chinese term below. You don't need to read hanzi to play.</p>
     <div class="cards">
       ${LESSONS.map(
@@ -374,14 +375,29 @@ interface Practice {
   drawn: string | null;
   discards: string[];
   flowers: string[];
+  melds: TileSet[];
   turn: number;
+  /** True while `drawn` is a kong's replacement tile rather than a normal draw. */
+  isKongReplacement: boolean;
+  /** True while `drawn` was the last tile pulled from the wall. */
+  isLastTile: boolean;
 }
 
 let p: Practice;
 
 function startPractice() {
   const deck = shuffle(buildDeck());
-  p = { wall: deck, hand: [], drawn: null, discards: [], flowers: [], turn: 0 };
+  p = {
+    wall: deck,
+    hand: [],
+    drawn: null,
+    discards: [],
+    flowers: [],
+    melds: [],
+    turn: 0,
+    isKongReplacement: false,
+    isLastTile: false,
+  };
   playShuffle(30);
 
   while (p.hand.length < 13) drawInto(p.hand);
@@ -407,7 +423,54 @@ function draw() {
   const tmp: string[] = [];
   drawInto(tmp);
   p.drawn = tmp[0] ?? null;
+  p.isKongReplacement = false;
+  p.isLastTile = p.wall.length === 0 && p.drawn !== null;
   p.turn++;
+  renderPractice();
+}
+
+/** Remove up to `n` copies of `id` from `arr`, in place. */
+function removeCopies(arr: string[], id: string, n: number) {
+  for (let i = 0; i < n; i++) {
+    const idx = arr.indexOf(id);
+    if (idx < 0) break;
+    arr.splice(idx, 1);
+  }
+}
+
+/**
+ * Whether the drawn tile can be kong'd right now, and which kind. Only the
+ * concealed and added forms are reachable solo — a claimed kong needs an
+ * opponent's discard to claim, which this practice table doesn't simulate.
+ */
+function kongAvailable(): 'concealed' | 'added' | null {
+  if (!p.drawn) return null;
+  if (p.hand.filter((t) => t === p.drawn).length >= 3) return 'concealed';
+  if (p.melds.some((m) => m.kind === 'pung' && m.tiles[0] === p.drawn)) return 'added';
+  return null;
+}
+
+function declareKong() {
+  const style = kongAvailable();
+  if (!style || !p.drawn) return;
+  const id = p.drawn;
+
+  if (style === 'concealed') {
+    removeCopies(p.hand, id, 3);
+    p.melds.push({ kind: 'kong', tiles: [id, id, id, id], exposed: false, kongStyle: 'concealed' });
+  } else {
+    const m = p.melds.find((meld) => meld.kind === 'pung' && meld.tiles[0] === id)!;
+    m.kind = 'kong';
+    m.tiles.push(id);
+    m.kongStyle = 'added';
+  }
+
+  playSelect();
+  const tmp: string[] = [];
+  drawInto(tmp);
+  p.drawn = tmp[0] ?? null;
+  p.isKongReplacement = true;
+  p.isLastTile = p.wall.length === 0 && p.drawn !== null;
   renderPractice();
 }
 
@@ -417,19 +480,25 @@ function fullHand(): string[] {
 
 function renderPractice() {
   const hand = fullHand();
-  table.setLayout({ hand, discards: p.discards.slice(-24), wall: Math.min(14, p.wall.length / 8) });
+  table.setLayout({
+    hand,
+    discards: p.discards.slice(-24),
+    melds: p.melds.map((m) => m.tiles),
+    wall: Math.min(14, p.wall.length / 8),
+  });
   table.clearMarks();
   // The freshly drawn tile sits at the end, held slightly apart by the glow.
   if (p.drawn) table.markHand({ [hand.length - 1]: '#f5c542' }, false);
 
-  const won = isWinningHand(hand);
-  const s = shanten(hand.length === 14 ? p.hand : hand);
+  const won = isWinningHand(hand, p.melds);
+  const s = shanten(hand.length === 14 ? p.hand : hand, p.melds.length);
   const ready = s === 0;
-  const waits = ready ? waitingTiles(p.hand) : [];
-  const useful = !ready && !won ? usefulTiles(p.hand) : [];
+  const waits = ready ? waitingTiles(p.hand, p.melds) : [];
+  const useful = !ready && !won ? usefulTiles(p.hand, p.melds.length) : [];
+  const kongStyle = won ? null : kongAvailable();
 
   content.innerHTML = `
-    <div class="crumb">🎮 Practice table</div>
+    <div class="crumb">🎮 Practice table · Dealer, East round (${say('莊家', 'zong1 gaa1')} · ${say('圈風東', 'hyun1 fung1 dung1')})</div>
     <div class="stat-row">
       <div class="stat"><b>${p.turn}</b><small>turns</small></div>
       <div class="stat"><b>${p.wall.length}</b><small>wall left</small></div>
@@ -442,7 +511,19 @@ function renderPractice() {
       won
         ? renderWin(hand)
         : `
-      <p class="lede">You drew ${tileChip(p.drawn!)} <b>${def(p.drawn!).cn}</b> <i class="jyut">${def(p.drawn!).jyut}</i> — ${def(p.drawn!).en}. Click any tile on the table to discard it.</p>
+      <p class="lede">You drew ${tileChip(p.drawn!)} <b>${def(p.drawn!).cn}</b> <i class="jyut">${def(p.drawn!).jyut}</i> — ${def(p.drawn!).en}${
+        p.isKongReplacement ? ` — a kong replacement (${say('槓上開花', 'gong3 soeng6 hoi1 faa1')} if it wins you the hand)` : ''
+      }. Click any tile on the table to discard it.</p>
+      ${
+        kongStyle
+          ? `<div class="coach kong-offer">
+              <p>You hold ${kongStyle === 'concealed' ? 'three' : 'an exposed pung'} of this tile — you may declare a
+              ${say(kongStyle === 'concealed' ? '暗槓' : '加槓', kongStyle === 'concealed' ? 'am3 gong3' : 'gaa1 gong3')}
+              (${kongStyle} kong) and draw a replacement.</p>
+              <button class="primary" id="kong-btn">Declare Kong 槓</button>
+            </div>`
+          : ''
+      }
       <div class="coach">
         <h3>Coach</h3>
         ${
@@ -471,6 +552,7 @@ function renderPractice() {
     p.hand = sortHand(p.hand);
     renderPractice();
   });
+  document.getElementById('kong-btn')?.addEventListener('click', declareKong);
 
   if (won) {
     playWin();
@@ -513,7 +595,18 @@ function renderPractice() {
 }
 
 function renderWin(hand: string[]): string {
-  const r = score({ concealed: hand, flowers: p.flowers, selfDraw: true, seatWind: 'e', roundWind: 'e' });
+  // Solo practice always seats you as dealer in the East round — 東 is both
+  // your seat wind and the round wind, exactly like the "Double East" lesson.
+  const r = score({
+    concealed: hand,
+    melds: p.melds,
+    flowers: p.flowers,
+    selfDraw: true,
+    seatWind: 'e',
+    roundWind: 'e',
+    isLastTile: p.isLastTile,
+    isKongReplacement: p.isKongReplacement,
+  });
   return `
     <div class="coach win">
       <h3>${
