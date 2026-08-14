@@ -226,13 +226,37 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
 .bad-text { color: var(--bad); }
 
 .chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
+.tile-card {
+  position: relative;
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 8px;
+  background: #2f9e6b;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
 .chip {
   width: 30px;
-  border-radius: 4px;
+  display: block;
+  border-radius: 5px;
   background: #fbf6e9;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
   vertical-align: middle;
 }
+.pronounce {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #d8f4e4;
+  border-radius: 50%;
+  background: #176442;
+  color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  cursor: pointer;
+}
+.pronounce:hover { background: #3ddc84; color: #0a1f18; }
 .chips.big .chip { width: 34px; }
 
 .score { list-style: none; padding: 0; margin: 10px 0; }

@@ -7,6 +7,7 @@
  */
 
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { faceTexture } from './textures';
 import { playPick } from './audio';
 
@@ -37,7 +38,7 @@ export interface TileHandle {
   glow: THREE.Color | null;
 }
 
-const geometry = new THREE.BoxGeometry(TILE_W, TILE_H, TILE_D);
+const geometry = new RoundedBoxGeometry(TILE_W, TILE_H, TILE_D, 3, 0.055);
 
 const BACK = new THREE.MeshStandardMaterial({ color: 0x2f9e6b, roughness: 0.55, metalness: 0.02 });
 const SIDE = new THREE.MeshStandardMaterial({ color: 0xf3ecd9, roughness: 0.45, metalness: 0.0 });

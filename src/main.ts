@@ -70,8 +70,33 @@ paintMute();
 
 function tileChip(id: string): string {
   const d = def(id);
-  return `<img class="chip" src="${faceDataUrl(id)}" alt="${d.en}" title="${d.cn} ${d.jyut} — ${d.en}">`;
+  return `<span class="tile-card" title="${d.cn} ${d.jyut} — ${d.en}">
+    <img class="chip" src="${faceDataUrl(id)}" alt="${d.en}">
+    <button class="pronounce" data-pronounce="${id}" aria-label="Hear ${d.cn} in Cantonese" title="Hear Cantonese pronunciation">🔊</button>
+  </span>`;
 }
+
+function pronounceTile(id: string) {
+  const d = def(id);
+  if (!('speechSynthesis' in window)) {
+    toast(`${say(d.cn, d.jyut)} — ${d.en}`, 'info');
+    return;
+  }
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(d.cn);
+  utterance.lang = 'zh-HK';
+  utterance.rate = 0.78;
+  utterance.pitch = 1;
+  window.speechSynthesis.speak(utterance);
+}
+
+content.addEventListener('click', (event) => {
+  const target = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-pronounce]');
+  if (!target) return;
+  event.preventDefault();
+  event.stopPropagation();
+  pronounceTile(target.dataset.pronounce!);
+});
 
 /** Hanzi followed by its Cantonese romanisation, for inline use. */
 function say(cn: string, jyut: string): string {
