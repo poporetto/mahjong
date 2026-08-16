@@ -221,6 +221,26 @@ button:disabled { opacity: 0.35; cursor: not-allowed; }
   background: var(--panel-2);
   border-radius: var(--radius);
 }
+.opp-row { display: flex; gap: 6px; margin: 12px 0; }
+.opp {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 9px;
+  background: var(--panel-2);
+  border-radius: 10px;
+  border: 1px solid transparent;
+  transition: border-color 0.15s, background 0.15s;
+}
+.opp.thinking { border-color: rgba(245, 197, 66, 0.5); background: #1b3d31; animation: opp-pulse 1s ease-in-out infinite; }
+@keyframes opp-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.72; } }
+.opp-head { display: flex; flex-direction: column; gap: 1px; }
+.opp-head b { font-size: 15px; line-height: 1; }
+.opp-head b .jyut { display: none; }
+.opp-head span { font-size: 11.5px; color: var(--ink); font-weight: 600; }
+.opp-head small { font-size: 10.5px; color: var(--muted); }
+.opp .chips { margin: 6px 0 0; gap: 3px; }
+.opp .chip { width: 20px; }
+
 .coach.win { border: 1px solid var(--gold); }
 .coach.kong-offer { border: 1px solid rgba(245, 197, 66, 0.4); padding-bottom: 12px; }
 .coach.kong-offer p { margin: 0 0 10px; font-size: 13.5px; }

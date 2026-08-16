@@ -31,19 +31,30 @@ You can't advance past a task until you get it right.
 7. **Getting Ready** — reading your own wait, and why two-sided waits beat closed ones
 8. **Faan & Scoring** — the 3-faan minimum, the patterns that clear it, and the five situational faan (kong replacement, last tile, etc.)
 
-**Practice table** — a real deal from a shuffled 144-tile wall, seated as dealer in the
-East round. Draw, discard, and watch your shanten count, your live wait, and a per-tile
-readout of what discarding would cost you. Flowers are set aside and replaced
-automatically. When you hold three of a tile and draw the fourth, a **Kong** button
-appears — declaring it draws a genuine replacement tile and, if that tile wins the hand,
-scores 槓上開花 correctly. Complete a hand and it gets scored against the faan table,
-including the situational patterns and telling you when you've built a hand you aren't
-allowed to declare.
+**Play vs Computer** — a real 4-seat table. You sit East (dealer); three bots sit South,
+West, and North. Turn order is E → S → W → N → E, matching the "Taking a Turn" lesson.
 
-Solo practice only exercises what one player can trigger alone: concealed kong, added
-kong, and the last-tile-in-the-wall self-draw. Claimed kong, robbing a kong, and winning
-off someone else's discard are taught in the lessons but need an opponent to happen —
-there's no bot player yet.
+- **You** get the full coach experience: live shanten, your wait once ready, a per-tile
+  readout of what discarding would cost, a **Kong** button whenever one is available
+  (concealed or added), and a **Declare Win** button that only appears once your hand
+  both is structurally complete *and* clears the faan minimum — a chicken hand just
+  keeps you playing, exactly like a real table.
+- **Claiming is real**: any bot discard that completes your hand, gives you a pung, or
+  gives you a kong is offered as a claim; chow is offered only when North (the seat
+  before you in turn order) discards, matching the real restriction. Claiming correctly
+  jumps the turn to you, and a claimed pung/chow skips your draw, exactly per the rules.
+- **Bots** draw and discard by greedy shanten minimisation (see `src/bot.ts`) — they
+  play *reasonably*, not well. They never read danger tiles or defend against your wait,
+  and they self-draw a real win when their hand clears the faan minimum.
+- Flowers are set aside and replaced automatically for every seat. A bot's revealed hand
+  is shown in full if it beats you, so a loss is also a lesson.
+
+**What bots don't do, on purpose:** they never claim — not from you, not from each
+other. So a claimed kong, robbing a kong, and 槓上炮 (discard right after a kong) are
+taught in the lessons but only reachable by you, not by an opponent triggering them
+against you. That's a real scope limit, not an oversight — a full claim-priority
+resolution across three independent opponents is a much bigger system, and this is the
+line where "opponent that behaves" stops and "opponent that plays well" begins.
 
 ## Reading the tiles without hanzi
 
@@ -84,7 +95,8 @@ There are no fu or minipoints; that's the point of this ruleset.
 | `src/audio.ts` | Synthesised tile sounds and the mute toggle. |
 | `src/scene.ts` | The Three.js table: layout, lighting, pointer picking. |
 | `src/lessons.ts` | Lesson content, declarative. |
-| `src/main.ts` | Lesson runner and practice table. |
+| `src/bot.ts` | Opponent discard logic — pure, no game state, no DOM. |
+| `src/main.ts` | Lesson runner, and the 4-seat game engine + rendering for Play vs Computer. |
 
 There are no image assets — the tile faces are generated at runtime. CJK glyphs come from
 system fonts, so faces will look slightly different across platforms; on a machine with no
