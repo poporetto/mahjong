@@ -40,17 +40,25 @@ export interface TileHandle {
 
 const geometry = new RoundedBoxGeometry(TILE_W, TILE_H, TILE_D, 3, 0.055);
 
-const BACK = new THREE.MeshStandardMaterial({ color: 0x2f9e6b, roughness: 0.55, metalness: 0.02 });
-const SIDE = new THREE.MeshStandardMaterial({ color: 0xf3ecd9, roughness: 0.45, metalness: 0.0 });
+/** Scratch vector reused inside the per-frame loop to avoid an allocation per tile. */
+const TMP_VEC = new THREE.Vector3();
 
+/**
+ * Each tile gets its own side/back materials rather than sharing one instance
+ * across the whole table — opacity is animated per-tile (for the "dim the
+ * others" hint), and a shared material's opacity would get stomped by
+ * whichever tile last wrote to it, flickering every tile that uses it.
+ */
 function materialsFor(id: string): THREE.Material[] {
   const face = new THREE.MeshStandardMaterial({
     map: faceTexture(id),
     roughness: 0.35,
     metalness: 0.0,
   });
+  const side = new THREE.MeshStandardMaterial({ color: 0xf3ecd9, roughness: 0.45, metalness: 0.0 });
+  const back = new THREE.MeshStandardMaterial({ color: 0x2f9e6b, roughness: 0.55, metalness: 0.02 });
   // BoxGeometry material order: +X, -X, +Y, -Y, +Z, -Z
-  return [SIDE, SIDE, SIDE, SIDE, face, BACK];
+  return [side, side, side, side, face, back];
 }
 
 export class Table {
@@ -67,6 +75,15 @@ export class Table {
   private dragging = false;
   private dragged = 0;
   private lastX = 0;
+  /**
+   * Forces at least one more full update+render pass. Set on any call that
+   * changes what the table should look like (layout, marks, clear). Not
+   * strictly required for correctness — the per-property epsilon checks in
+   * frame() catch essentially everything on their own — but it's a cheap,
+   * explicit guarantee that a state change always gets drawn, and it reads
+   * as documentation of exactly when a repaint is deliberately requested.
+   */
+  private dirty = true;
 
   onTileClick: ((t: TileHandle) => void) | null = null;
   onTileHover: ((t: TileHandle | null) => void) | null = null;
@@ -173,6 +190,7 @@ export class Table {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.dirty = true;
   }
 
   /* ------------------------------------------------------------- contents -- */
@@ -180,10 +198,14 @@ export class Table {
   clear() {
     for (const t of this.tiles) {
       this.scene.remove(t.mesh);
-      (t.mesh.material as THREE.Material[])[4].dispose();
+      const mats = t.mesh.material as THREE.Material[];
+      // mats[0..3] are the same `side` instance repeated, mats[5] is `back` —
+      // dispose each unique material once, not the geometry (still shared).
+      new Set(mats).forEach((m) => m.dispose());
     }
     this.tiles = [];
     this.hovered = null;
+    this.dirty = true;
   }
 
   private spawn(id: string, group: TileHandle['group'], index: number): TileHandle {
@@ -256,7 +278,12 @@ export class Table {
     const wOrigin = -((wallLen - 1) * wGap) / 2;
     for (let i = 0; i < wallLen; i++) {
       const h = this.spawn('c1', 'wall', i);
-      (h.mesh.material as THREE.Material[])[4] = BACK;
+      // A wall tile shows its back on every visible face — reuse this tile's
+      // own back material for the "face" slot too, and drop the face texture
+      // material spawn() made for it so it isn't leaked.
+      const mats = h.mesh.material as THREE.Material[];
+      mats[4].dispose();
+      mats[4] = mats[5];
       h.target.set(wOrigin + i * wGap, TILE_D / 2, -3.3);
       h.targetRot.set(-Math.PI / 2, 0, 0);
       h.mesh.position.copy(h.target);
@@ -275,6 +302,7 @@ export class Table {
       t.glow = m ? new THREE.Color(m) : null;
       t.dim = dimOthers && !m;
     }
+    this.dirty = true;
   }
 
   clearMarks() {
@@ -282,6 +310,7 @@ export class Table {
       t.glow = null;
       t.dim = false;
     }
+    this.dirty = true;
   }
 
   /**
@@ -336,45 +365,115 @@ export class Table {
     this.onTileHover?.(next);
   }
 
+  // Below this, a lerp step snaps straight to its target instead of taking
+  // another asymptotic sliver of it — otherwise floating-point lerps never
+  // quite arrive, and the tile (or camera) technically keeps "moving" by an
+  // imperceptible amount forever, which is exactly what forces a re-render
+  // every frame even when nothing has actually changed.
+  private static readonly POS_EPS = 0.0005;
+  private static readonly ROT_EPS = 0.0008;
+  private static readonly LIFT_EPS = 0.001;
+  private static readonly OPACITY_EPS = 0.003;
+  private static readonly EMISSIVE_EPS = 0.01;
+  private static readonly CAM_EPS = 0.0008;
+  private static readonly BLACK = new THREE.Color(0x000000);
+
   private frame() {
+    let active = this.dirty;
+    this.dirty = false;
+
     for (const t of this.tiles) {
       const wantLift = t === this.hovered || t.selected ? 1 : 0;
-      t.lift += (wantLift - t.lift) * 0.22;
+      const liftDelta = wantLift - t.lift;
+      if (Math.abs(liftDelta) > Table.LIFT_EPS) {
+        t.lift += liftDelta * 0.22;
+        active = true;
+      } else {
+        t.lift = wantLift;
+      }
 
-      t.mesh.position.lerp(
-        new THREE.Vector3(t.target.x, t.target.y + t.lift * 0.34, t.target.z - t.lift * 0.16),
-        0.2,
+      const desiredPos = TMP_VEC.set(
+        t.target.x,
+        t.target.y + t.lift * 0.34,
+        t.target.z - t.lift * 0.16,
       );
-      t.mesh.rotation.x += (t.targetRot.x - t.mesh.rotation.x) * 0.2;
-      t.mesh.rotation.y += (t.targetRot.y - t.mesh.rotation.y) * 0.2;
+      if (t.mesh.position.distanceToSquared(desiredPos) > Table.POS_EPS * Table.POS_EPS) {
+        t.mesh.position.lerp(desiredPos, 0.2);
+        active = true;
+      } else {
+        t.mesh.position.copy(desiredPos);
+      }
+
+      const rx = t.targetRot.x - t.mesh.rotation.x;
+      const ry = t.targetRot.y - t.mesh.rotation.y;
+      if (Math.abs(rx) > Table.ROT_EPS || Math.abs(ry) > Table.ROT_EPS) {
+        t.mesh.rotation.x += rx * 0.2;
+        t.mesh.rotation.y += ry * 0.2;
+        active = true;
+      } else {
+        t.mesh.rotation.x = t.targetRot.x;
+        t.mesh.rotation.y = t.targetRot.y;
+      }
 
       const mats = t.mesh.material as THREE.MeshStandardMaterial[];
       const face = mats[4];
       if (face.emissive) {
-        const want = t.glow ?? new THREE.Color(0x000000);
-        face.emissive.lerp(want, 0.15);
-        face.emissiveIntensity = t.glow ? 0.3 : 0;
+        const want = t.glow ?? Table.BLACK;
+        const ediff =
+          Math.abs(face.emissive.r - want.r) +
+          Math.abs(face.emissive.g - want.g) +
+          Math.abs(face.emissive.b - want.b);
+        if (ediff > Table.EMISSIVE_EPS) {
+          face.emissive.lerp(want, 0.15);
+          active = true;
+        } else {
+          face.emissive.copy(want);
+        }
+        const wantIntensity = t.glow ? 0.3 : 0;
+        if (face.emissiveIntensity !== wantIntensity) {
+          face.emissiveIntensity = wantIntensity;
+          active = true;
+        }
       }
+
       const wantOpacity = t.dim ? 0.32 : 1;
       for (const m of mats) {
-        if (m.opacity !== wantOpacity) {
+        const delta = wantOpacity - m.opacity;
+        if (Math.abs(delta) > Table.OPACITY_EPS) {
           m.transparent = true;
-          m.opacity += (wantOpacity - m.opacity) * 0.18;
+          m.opacity += delta * 0.18;
+          active = true;
+        } else if (m.opacity !== wantOpacity) {
+          m.opacity = wantOpacity;
         }
       }
     }
 
-    // Widen the framing on narrow viewports so a 14-tile hand always fits.
-    this.yaw += (this.yawTarget - this.yaw) * 0.1;
+    // The camera's target distance/aim are pure functions of the current
+    // tile targets, so it's fine to recompute them every frame regardless —
+    // it's cheap, and whether that recomputed pose actually differs from
+    // where the camera already sits is exactly the "is it moving" question.
     const dist = this.fitDistance();
     const flat = Math.cos(CAM_ELEV) * dist;
-    this.camera.position.set(
+    const yawDelta = this.yawTarget - this.yaw;
+    if (Math.abs(yawDelta) > Table.CAM_EPS) {
+      this.yaw += yawDelta * 0.1;
+      active = true;
+    } else {
+      this.yaw = this.yawTarget;
+    }
+    const desiredCam = TMP_VEC.set(
       Math.sin(this.yaw) * flat,
       Math.sin(CAM_ELEV) * dist,
       this.lookZ + Math.cos(this.yaw) * flat,
     );
-    this.camera.lookAt(0, 0.4, this.lookZ);
+    if (this.camera.position.distanceToSquared(desiredCam) > Table.CAM_EPS * Table.CAM_EPS) {
+      this.camera.position.copy(desiredCam);
+      this.camera.lookAt(0, 0.4, this.lookZ);
+      active = true;
+    }
 
+    if (!active) return; // Nothing moved — skip the render, not just the motion.
     this.renderer.render(this.scene, this.camera);
   }
 }
