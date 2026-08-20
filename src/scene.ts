@@ -36,12 +36,28 @@ export interface TileHandle {
   selected: boolean;
   dim: boolean;
   glow: THREE.Color | null;
+  /**
+   * True from the moment this tile is spawned until setLayout has placed it
+   * once. Lets setLayout tell "just created, fly it in" apart from "already
+   * on the table, just ease it to its new spot" — see reconcileGroup.
+   */
+  fresh: boolean;
 }
 
 const geometry = new RoundedBoxGeometry(TILE_W, TILE_H, TILE_D, 3, 0.055);
 
 /** Scratch vector reused inside the per-frame loop to avoid an allocation per tile. */
 const TMP_VEC = new THREE.Vector3();
+
+// Shared per-group rest rotations and fly-in offsets, reused across every
+// setLayout call instead of being allocated fresh each time.
+const HAND_ROT = new THREE.Euler(-0.22, 0, 0);
+const MELD_ROT = new THREE.Euler(-0.18, 0, 0);
+const DISCARD_ROT = new THREE.Euler(-Math.PI / 2, 0, 0);
+const FLY_UP = new THREE.Vector3(0, 6, 0);
+const FLY_UP_MELD = new THREE.Vector3(0, 4, 0);
+const FLY_UP_DISCARD = new THREE.Vector3(0, 3, 0);
+const ZERO_VEC = new THREE.Vector3(0, 0, 0);
 
 /**
  * Each tile gets its own side/back materials rather than sharing one instance
@@ -196,27 +212,29 @@ export class Table {
   /* ------------------------------------------------------------- contents -- */
 
   clear() {
-    for (const t of this.tiles) {
-      this.scene.remove(t.mesh);
-      const mats = t.mesh.material as THREE.Material[];
-      // mats[0..3] are the same `side` instance repeated, mats[5] is `back` —
-      // dispose each unique material once, not the geometry (still shared).
-      new Set(mats).forEach((m) => m.dispose());
-    }
+    for (const t of this.tiles) this.disposeTile(t);
     this.tiles = [];
     this.hovered = null;
     this.dirty = true;
   }
 
-  private spawn(id: string, group: TileHandle['group'], index: number): TileHandle {
+  private disposeTile(t: TileHandle) {
+    this.scene.remove(t.mesh);
+    const mats = t.mesh.material as THREE.Material[];
+    // mats[0..3] are the same `side` instance repeated, mats[5] is `back` —
+    // dispose each unique material once, not the geometry (still shared).
+    new Set(mats).forEach((m) => m.dispose());
+  }
+
+  private spawnFresh(id: string, group: TileHandle['group']): TileHandle {
     const mesh = new THREE.Mesh(geometry, materialsFor(id));
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     this.scene.add(mesh);
-    const h: TileHandle = {
+    return {
       mesh,
       id,
-      index,
+      index: 0,
       group,
       target: new THREE.Vector3(),
       targetRot: new THREE.Euler(),
@@ -224,9 +242,40 @@ export class Table {
       selected: false,
       dim: false,
       glow: null,
+      fresh: true,
     };
-    this.tiles.push(h);
-    return h;
+  }
+
+  /**
+   * Reuse existing tiles of `group` wherever their id matches one still
+   * wanted, in order, instead of destroying and recreating the whole group
+   * every call — otherwise a hand that only gained one drawn tile would fly
+   * every tile in it back in from above, since a full respawn has no way to
+   * tell "still here" from "brand new." Leftover old tiles (e.g. a discard
+   * that scrolled out of the tracked window) are disposed; leftover wanted
+   * ids with no match spawn fresh, `fresh: true`, ready to fly in.
+   */
+  private reconcileGroup(group: TileHandle['group'], ids: string[]): TileHandle[] {
+    const pool = new Map<string, TileHandle[]>();
+    for (const t of this.tiles) {
+      if (t.group !== group) continue;
+      const bucket = pool.get(t.id);
+      if (bucket) bucket.push(t);
+      else pool.set(t.id, [t]);
+    }
+
+    const result = ids.map((id) => {
+      const bucket = pool.get(id);
+      const reused = bucket?.shift();
+      return reused ?? this.spawnFresh(id, group);
+    });
+
+    for (const bucket of pool.values()) {
+      for (const t of bucket) this.disposeTile(t);
+    }
+
+    this.tiles = this.tiles.filter((t) => t.group !== group).concat(result);
+    return result;
   }
 
   /** Replace everything on the table in one call. */
@@ -236,25 +285,58 @@ export class Table {
     melds?: string[][];
     wall?: number;
   }) {
-    this.clear();
+    this.dirty = true;
+    this.hovered = null;
+
+    const place = (
+      h: TileHandle,
+      index: number,
+      target: THREE.Vector3,
+      rot: THREE.Euler,
+      flyFrom: THREE.Vector3,
+    ) => {
+      h.index = index;
+      h.target.copy(target);
+      h.targetRot.copy(rot);
+      if (h.fresh) {
+        h.mesh.position.copy(target).add(flyFrom);
+        h.mesh.rotation.copy(rot);
+        h.fresh = false;
+      }
+      // Already-placed tiles are left exactly where they are — frame() eases
+      // them from their current position to the (possibly moved) target.
+    };
 
     const hand = layout.hand;
     const gap = TILE_W + 0.035;
     const originX = -((hand.length - 1) * gap) / 2;
-    hand.forEach((id, i) => {
-      const h = this.spawn(id, 'hand', i);
-      h.target.set(originX + i * gap, TILE_H / 2, 3.1);
-      h.targetRot.set(-0.22, 0, 0);
-      h.mesh.position.copy(h.target).add(new THREE.Vector3(0, 6, 0));
-      h.mesh.rotation.copy(h.targetRot);
+    const handTiles = this.reconcileGroup('hand', hand);
+    handTiles.forEach((h, i) => {
+      place(
+        h,
+        i,
+        TMP_VEC.set(originX + i * gap, TILE_H / 2, 3.1),
+        HAND_ROT,
+        FLY_UP,
+      );
     });
 
-    (layout.melds ?? []).forEach((meld, mi) => {
-      meld.forEach((id, i) => {
-        const h = this.spawn(id, 'meld', mi);
-        h.target.set(4.3 + i * (TILE_W + 0.04), TILE_H / 2, 2.0 - mi * (TILE_D + 0.12));
-        h.targetRot.set(-0.18, 0, 0);
-        h.mesh.position.copy(h.target).add(new THREE.Vector3(0, 4, 0));
+    const melds = layout.melds ?? [];
+    const meldTiles = this.reconcileGroup(
+      'meld',
+      melds.flatMap((meld) => meld),
+    );
+    let mti = 0;
+    melds.forEach((meld, mi) => {
+      meld.forEach((_id, i) => {
+        const h = meldTiles[mti++];
+        place(
+          h,
+          mi,
+          TMP_VEC.set(4.3 + i * (TILE_W + 0.04), TILE_H / 2, 2.0 - mi * (TILE_D + 0.12)),
+          MELD_ROT,
+          FLY_UP_MELD,
+        );
       });
     });
 
@@ -262,33 +344,38 @@ export class Table {
     const PER_ROW = 8;
     const dGap = TILE_W + 0.06;
     const dOrigin = -((Math.min(discards.length, PER_ROW) - 1) * dGap) / 2;
-    discards.forEach((id, i) => {
-      const h = this.spawn(id, 'discard', i);
+    const discardTiles = this.reconcileGroup('discard', discards);
+    discardTiles.forEach((h, i) => {
       const col = i % PER_ROW;
       const row = Math.floor(i / PER_ROW);
-      h.target.set(dOrigin + col * dGap, TILE_D / 2, -0.7 + row * (TILE_H + 0.08));
-      h.targetRot.set(-Math.PI / 2, 0, 0);
-      h.mesh.position.copy(h.target).add(new THREE.Vector3(0, 3, 0));
-      h.mesh.rotation.copy(h.targetRot);
+      place(
+        h,
+        i,
+        TMP_VEC.set(dOrigin + col * dGap, TILE_D / 2, -0.7 + row * (TILE_H + 0.08)),
+        DISCARD_ROT,
+        FLY_UP_DISCARD,
+      );
     });
 
-    // A suggestion of the wall behind the discards, purely for atmosphere.
+    // A suggestion of the wall behind the discards, purely for atmosphere —
+    // every entry is an interchangeable face-down 'c1', so reconciliation
+    // just needs the count right; which physical handle survives a shrink
+    // doesn't matter since they're visually identical.
     const wallLen = Math.round(layout.wall ?? 0);
     const wGap = TILE_W + 0.02;
     const wOrigin = -((wallLen - 1) * wGap) / 2;
-    for (let i = 0; i < wallLen; i++) {
-      const h = this.spawn('c1', 'wall', i);
-      // A wall tile shows its back on every visible face — reuse this tile's
-      // own back material for the "face" slot too, and drop the face texture
-      // material spawn() made for it so it isn't leaked.
-      const mats = h.mesh.material as THREE.Material[];
-      mats[4].dispose();
-      mats[4] = mats[5];
-      h.target.set(wOrigin + i * wGap, TILE_D / 2, -3.3);
-      h.targetRot.set(-Math.PI / 2, 0, 0);
-      h.mesh.position.copy(h.target);
-      h.mesh.rotation.copy(h.targetRot);
-    }
+    const wallTiles = this.reconcileGroup('wall', Array(wallLen).fill('c1'));
+    wallTiles.forEach((h, i) => {
+      if (h.fresh) {
+        // A wall tile shows its back on every visible face — reuse this
+        // tile's own back material for the "face" slot too, and drop the
+        // face texture material spawnFresh made for it so it isn't leaked.
+        const mats = h.mesh.material as THREE.Material[];
+        mats[4].dispose();
+        mats[4] = mats[5];
+      }
+      place(h, i, TMP_VEC.set(wOrigin + i * wGap, TILE_D / 2, -3.3), DISCARD_ROT, ZERO_VEC);
+    });
   }
 
   handTiles(): TileHandle[] {
